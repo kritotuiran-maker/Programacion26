@@ -1,0 +1,233 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Ahorro</title>
+    <!-- Importando Tailwind CSS para estilos rápidos y responsivos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Importando Chart.js para generar los gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Estilos base para el body, con un color de fondo suave */
+        body {
+            background-color: #f3f4f6;
+            font-family: 'Inter', sans-serif; /* Usando una fuente limpia */
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <!-- Contenedor principal estilo tarjeta -->
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-8 flex flex-col md:flex-row gap-8 border-4 border-black">
+        
+        <!-- Sección Izquierda: Título y Gráfico -->
+        <div class="w-full md:w-1/2 flex flex-col">
+            <!-- Título de la aplicación -->
+            <h1 class="text-3xl font-bold mb-2 text-gray-800">Calculadora de<br>ahorro</h1>
+            <h2 class="text-lg text-gray-600 mb-4">Relación de ingresos y gastos</h2>
+            
+            <!-- Contenedor para el gráfico circular (Doughnut) -->
+            <div class="relative w-full aspect-square mt-auto">
+                <!-- El elemento canvas donde Chart.js dibujará el gráfico -->
+                <canvas id="miGrafico"></canvas>
+            </div>
+            
+            <!-- Contenedor para mostrar los porcentajes dinámicamente -->
+            <div id="porcentajes-container" class="mt-4 text-sm text-gray-700 font-medium text-center flex justify-around bg-gray-50 p-3 rounded-lg border border-gray-200 hidden">
+                <!-- Se llenará con JavaScript -->
+            </div>
+        </div>
+
+        <!-- Sección Derecha: Formularios de entrada -->
+        <div class="w-full md:w-1/2 flex flex-col gap-6">
+            
+            <!-- Tarjeta para INGRESOS -->
+            <div class="bg-blue-50 p-6 rounded-xl border-2 border-blue-200">
+                <h3 class="text-xl font-semibold mb-3 text-blue-800">Ingresos</h3>
+                <!-- Campo de entrada numérico para ingresos -->
+                <input type="number" id="input-ingresos" placeholder="Ej: 5000" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-lg" min="0">
+                <p class="text-xs text-blue-600 mt-2">Coloca aquí tu ingreso mensual o quincenal.</p>
+            </div>
+
+            <!-- Tarjeta para GASTOS -->
+            <div class="bg-red-50 p-6 rounded-xl border-2 border-red-200">
+                <h3 class="text-xl font-semibold mb-3 text-red-800">Gastos</h3>
+                <!-- Campo de entrada numérico para gastos -->
+                <input type="number" id="input-gastos" placeholder="Ej: 2000" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-red-500 outline-none text-lg" min="0">
+                <p class="text-xs text-red-600 mt-2">Suma de todos tus gastos en el periodo.</p>
+            </div>
+
+            <!-- Tarjeta para AHORRO O META -->
+            <div class="bg-green-50 p-6 rounded-xl border-2 border-green-200 relative overflow-hidden">
+                <h3 class="text-xl font-semibold mb-3 text-green-800">Meta ahorro (Sobrante)</h3>
+                
+                <!-- Opcional: Input para meta específica, o mostrar el cálculo automático -->
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-gray-600">Sobrante disponible:</span>
+                    <!-- Aquí se mostrará cuánto queda después de gastos -->
+                    <span id="display-sobrante" class="font-bold text-lg text-gray-800">$0</span>
+                </div>
+                
+                <!-- Campo para decidir cuánto de ese sobrante se quiere ahorrar -->
+                <label for="input-ahorro" class="block text-sm text-green-700 mb-1">¿Cuánto deseas ahorrar del sobrante?</label>
+                <input type="number" id="input-ahorro" placeholder="Ej: 1000" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-lg" min="0">
+                
+                <!-- Mensaje de advertencia si intenta ahorrar más de lo que sobra -->
+                <p id="msg-error-ahorro" class="text-red-500 text-sm mt-2 hidden font-medium">El ahorro no puede superar el sobrante.</p>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Referencias a los elementos del DOM (HTML) ---
+        // Obtenemos los campos de texto donde el usuario escribe
+        const inputIngresos = document.getElementById('input-ingresos');
+        const inputGastos = document.getElementById('input-gastos');
+        const inputAhorro = document.getElementById('input-ahorro');
+        
+        // Obtenemos los elementos donde mostraremos información
+        const displaySobrante = document.getElementById('display-sobrante');
+        const msgErrorAhorro = document.getElementById('msg-error-ahorro');
+        const contenedorPorcentajes = document.getElementById('porcentajes-container');
+        
+        // Obtenemos el contexto del canvas donde se dibujará el gráfico
+        const ctx = document.getElementById('miGrafico').getContext('2d');
+
+        // --- 2. Configuración Inicial del Gráfico (Chart.js) ---
+        // Decidí usar un gráfico tipo 'doughnut' (dona) porque es excelente para mostrar
+        // porcentajes de un total (el ingreso base = 100%).
+        let grafico = new Chart(ctx, {
+            type: 'doughnut', // Tipo de gráfico: dona
+            data: {
+                // Las etiquetas de las rebanadas
+                labels: ['Gastos', 'Ahorro', 'Disponible (No ahorrado)'], 
+                datasets: [{
+                    // Valores iniciales (todo en 0)
+                    data: [0, 0, 100], 
+                    // Colores para cada rebanada: Rojo (Gastos), Verde (Ahorro), Gris (Resto)
+                    backgroundColor: ['#ef4444', '#22c55e', '#e5e7eb'], 
+                    // Color del borde de las rebanadas
+                    borderColor: ['#b91c1c', '#15803d', '#d1d5db'], 
+                    borderWidth: 1 // Ancho del borde
+                }]
+            },
+            options: {
+                responsive: true, // Se adapta al tamaño del contenedor
+                maintainAspectRatio: false, // Permite que se ajuste libremente
+                plugins: {
+                    legend: {
+                        position: 'bottom', // Posición de la leyenda
+                    },
+                    tooltip: {
+                        // Función para mostrar el símbolo '$' o '%' en los tooltips al pasar el mouse
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed !== null) {
+                                    label += '$' + context.parsed;
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- 3. Función Principal de Cálculo y Actualización ---
+        // Esta función se ejecutará cada vez que el usuario escriba un número
+        function actualizarCalculadora() {
+            // 1. Obtener los valores de los inputs. 
+            // Si están vacíos, usamos 0. ParseFloat convierte texto a número decimal.
+            let ingresos = parseFloat(inputIngresos.value) || 0;
+            let gastos = parseFloat(inputGastos.value) || 0;
+            let ahorroDeseado = parseFloat(inputAhorro.value) || 0;
+
+            // 2. Calcular el sobrante (Ingresos - Gastos)
+            let sobrante = ingresos - gastos;
+
+            // Evitar que los gastos superen los ingresos de forma ilógica para el gráfico base
+            // Si los gastos son mayores, el sobrante es 0 (para propósitos visuales).
+            if (sobrante < 0) sobrante = 0;
+
+            // 3. Mostrar el sobrante disponible en la interfaz
+            displaySobrante.textContent = '$' + sobrante.toFixed(2); // .toFixed(2) asegura 2 decimales
+
+            // 4. Validar el ahorro
+            // El usuario no puede ahorrar más del sobrante que tiene.
+            let ahorroReal = 0;
+            if (ahorroDeseado > sobrante) {
+                // Muestra mensaje de error
+                msgErrorAhorro.classList.remove('hidden'); 
+                // Limita el ahorro al máximo posible (el sobrante total)
+                ahorroReal = sobrante; 
+            } else {
+                // Oculta mensaje de error si todo está bien
+                msgErrorAhorro.classList.add('hidden');
+                // Toma el valor ingresado por el usuario
+                ahorroReal = ahorroDeseado; 
+            }
+
+            // 5. Calcular lo que queda sin asignar (Ingreso - Gastos - Ahorro)
+            let disponibleRestante = ingresos - gastos - ahorroReal;
+            if(disponibleRestante < 0) disponibleRestante = 0;
+
+            // 6. Actualizar los datos del gráfico
+            // Modificamos el array de 'data' del gráfico con los nuevos valores calculados
+            grafico.data.datasets[0].data = [gastos, ahorroReal, disponibleRestante];
+            
+            // Si no hay ingresos, cambiamos el color del 'Disponible' a gris claro para indicar estado vacío
+            if(ingresos === 0) {
+                grafico.data.datasets[0].data = [0, 0, 1]; // Ponemos 1 para que dibuje un círculo gris completo
+                grafico.data.datasets[0].backgroundColor[2] = '#e5e7eb'; // Gris
+            } else {
+                grafico.data.datasets[0].backgroundColor[2] = '#3b82f6'; // Azul claro para el dinero libre
+            }
+
+            // Le decimos a Chart.js que redibuje el gráfico con los nuevos datos
+            grafico.update();
+
+            // 7. Calcular y mostrar Porcentajes
+            if (ingresos > 0) {
+                // Calculamos el porcentaje: (Valor / Total) * 100
+                let porcGastos = ((gastos / ingresos) * 100).toFixed(1);
+                let porcAhorro = ((ahorroReal / ingresos) * 100).toFixed(1);
+                let porcLibre = ((disponibleRestante / ingresos) * 100).toFixed(1);
+
+                // Mostramos el contenedor de porcentajes
+                contenedorPorcentajes.classList.remove('hidden');
+                
+                // Si el gasto supera el 100% por un error del usuario, lo limitamos visualmente
+                if(porcGastos > 100) porcGastos = 100;
+
+                // Inyectamos el HTML con los porcentajes calculados
+                contenedorPorcentajes.innerHTML = `
+                    <div class="flex flex-col text-red-600"><span>Gastos</span><span class="font-bold">${porcGastos}%</span></div>
+                    <div class="flex flex-col text-green-600"><span>Ahorro</span><span class="font-bold">${porcAhorro}%</span></div>
+                    <div class="flex flex-col text-blue-600"><span>Libre</span><span class="font-bold">${porcLibre}%</span></div>
+                `;
+            } else {
+                // Si no hay ingresos, ocultamos los porcentajes
+                contenedorPorcentajes.classList.add('hidden');
+            }
+        }
+
+        // --- 4. Asignación de Eventos (Event Listeners) ---
+        // Escuchamos el evento 'input' en cada campo de texto. 
+        // Esto significa que la función 'actualizarCalculadora' se llamará
+        // cada vez que el usuario presione una tecla, pegue texto, o cambie el valor.
+        inputIngresos.addEventListener('input', actualizarCalculadora);
+        inputGastos.addEventListener('input', actualizarCalculadora);
+        inputAhorro.addEventListener('input', actualizarCalculadora);
+
+        // Llamamos a la función una vez al inicio para que configure el estado inicial (todo en 0)
+        actualizarCalculadora();
+
+    </script>
+</body>
+</html>
